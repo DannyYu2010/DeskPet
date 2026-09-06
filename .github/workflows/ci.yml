@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Cheap, fails fast, and catches the failure mode that actually kills
+  # cross-platform projects: a platform branch escaping platform/.
+  seam-check:
+    name: Platform seam
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No target_os outside platform/
+        run: |
+          leaked=$(grep -rn --include='*.rs' 'target_os' \
+            apps/desktop/src-tauri/src crates \
+            | grep -v '^apps/desktop/src-tauri/src/platform/' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::cfg(target_os) found outside src-tauri/src/platform/"
+            echo "Add a method to the PetWindow trait instead."
+            echo "$leaked"
+            exit 1
+          fi
+
+      - name: No platform detection in frontend
+        run: |
+          leaked=$(grep -rn -E "navigator\.(platform|userAgentData)|process\.platform|isMac|isWindows" \
+            apps/desktop/src --include='*.ts' --include='*.tsx' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::platform detection in frontend; move it behind an IPC command"
+            echo "$leaked"
+            exit 1
+          fi
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: seam-check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - run: npm ci
+        working-directory: apps/desktop
+
+      - run: npm run typecheck
+        working-directory: apps/desktop
+
+      - name: Format
+        run: cargo fmt --all --check
+        working-directory: apps/desktop/src-tauri
+
+      # Both platforms must lint clean. This is the mechanism that stops the
+      # non-primary platform from silently rotting while development happens
+      # on the other one.
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: apps/desktop/src-tauri
+
+      - name: Test
+        run: cargo test --all
+        working-directory: apps/desktop/src-tauri
+
+      - name: Build bundle
+        run: npm run tauri build -- --target ${{ matrix.target }}
+        working-directory: apps/desktop

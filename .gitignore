@@ -1,0 +1,6 @@
+node_modules/
+dist/
+target/
+*.pet
+models/
+.DS_Store
