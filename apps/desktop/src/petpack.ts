@@ -42,6 +42,14 @@ export interface Manifest {
   sourceMap?: Record<string, StateName>;
 }
 
+/** What `load_active_pack` returns. Mirrors `core::pack::LoadedPack`. */
+export interface LoadedPack {
+  manifest: Manifest;
+  /** Frame id -> `data:` URL. Frames are inlined by Rust; see core/pack.rs. */
+  frames: Record<string, string>;
+  sourceDir: string;
+}
+
 export interface Notification {
   title: string;
   body: string;

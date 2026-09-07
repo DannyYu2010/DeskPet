@@ -42,6 +42,37 @@ Development is macOS-first, but **both platforms must compile and lint clean on
 every PR**. The Windows implementation exists from day one specifically so that
 macOS assumptions cannot quietly bake into the architecture.
 
+## PixiJS and the CSP
+
+PixiJS generates its shader and uniform sync functions with `new Function`.
+Our CSP forbids `unsafe-eval`, so `Application.init()` rejects with *"Current
+environment does not allow unsafe-eval"* and the pet window renders nothing —
+which, on a transparent borderless window, is indistinguishable from the window
+failing to appear at all.
+
+The fix is the side-effect import at the top of `apps/desktop/src/main.ts`:
+
+```ts
+import "pixi.js/unsafe-eval";   // before any renderer is constructed
+```
+
+**Do not instead add `'unsafe-eval'` to the CSP.** Packs are user-supplied
+content; this app has no business being able to eval strings.
+
+## One CSP, in tauri.conf.json
+
+Do not add a `<meta http-equiv="Content-Security-Policy">` tag to any HTML file
+in this app. The scaffold shipped with one, and it cost several debugging
+sessions: it declared `default-src 'self'` with no `style-src`, which blocks
+inline `<style>`. The pet window kept the user-agent default 8px body margin
+and grew scrollbars, and — this is the part that made it expensive — **nothing
+errored**. The styles simply never applied, so every CSS edit looked like it
+had no effect.
+
+When a meta CSP and the configured CSP both apply, the browser enforces the
+intersection. The stricter one wins, and `tauri.conf.json` quietly stops
+describing reality. There is one CSP and it lives in `tauri.conf.json`.
+
 ## Known gaps in the scaffold
 
 These are deliberate placeholders, not oversights. First `cargo tauri dev` will

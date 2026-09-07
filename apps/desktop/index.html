@@ -2,13 +2,32 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' asset: data: blob:" />
+    <!-- NO CSP meta tag here. There used to be one, and it silently broke the
+         page for days: it declared `default-src 'self'` with no `style-src`,
+         so the inline <style> below was blocked, the document kept the UA
+         default 8px body margin, and the window grew scrollbars. Nothing
+         errored — the styles simply never applied.
+
+         When a meta CSP and the tauri.conf.json CSP both apply, the browser
+         enforces the intersection, so the stricter one wins and the config
+         becomes a lie. There is exactly one CSP for this app and it lives in
+         tauri.conf.json (which does allow `style-src 'unsafe-inline'`). -->
     <style>
       /* The window is transparent; anything opaque here shows up as a box
          around the pet. Nothing in this document may set a background. */
-      html, body { margin: 0; padding: 0; background: transparent; overflow: hidden;
+      /* `position: fixed; inset: 0` rather than `width/height: 100%`: it makes
+         the document exactly the viewport and takes it out of flow entirely,
+         so nothing a renderer appends can grow the scrollable area. With
+         width/height:100% WKWebView still reported a 264x276 scroll area
+         inside a 256x256 viewport. */
+      html, body { margin: 0; padding: 0; position: fixed; inset: 0;
+                   background: transparent; overflow: hidden;
                    user-select: none; -webkit-user-select: none; cursor: default; }
-      canvas { display: block; }
+      /* A scrollbar is opaque chrome drawn inside a window that is supposed to
+         look like it has no window. Belt and braces: hide the bars, and pin
+         the canvas so nothing can push the document past the viewport. */
+      ::-webkit-scrollbar { display: none; width: 0; height: 0; }
+      canvas { display: block; position: fixed; top: 0; left: 0; }
     </style>
   </head>
   <body>

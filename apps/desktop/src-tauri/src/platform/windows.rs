@@ -20,7 +20,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos,
+    GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, IsWindowVisible, SetWindowLongPtrW,
+    SetWindowPos,
     GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
 };
@@ -138,6 +139,36 @@ impl super::PetWindow for WinPetWindow {
 
     fn is_dnd_active(&self) -> bool {
         unsafe { SHQueryUserNotificationState().map(|s| s == QUNS_BUSY).unwrap_or(false) }
+    }
+
+    fn mouse_button_down(&self) -> bool {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+        // High bit set means the key is currently down.
+        unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+    }
+
+    fn debug_report(&self) -> String {
+        let Ok(hwnd) = self.hwnd() else {
+            return "no HWND handle".into();
+        };
+        unsafe {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            let mut r = RECT::default();
+            let ok = GetWindowRect(hwnd, &mut r).is_ok();
+            format!(
+                "hwnd visible={} exStyle=0x{ex:x} layered={} noactivate={} toolwindow={} \
+transparent={} rect=({},{} {}x{})",
+                IsWindowVisible(hwnd).as_bool(),
+                ex & WS_EX_LAYERED.0 != 0,
+                ex & WS_EX_NOACTIVATE.0 != 0,
+                ex & WS_EX_TOOLWINDOW.0 != 0,
+                ex & WS_EX_TRANSPARENT.0 != 0,
+                if ok { r.left } else { 0 },
+                if ok { r.top } else { 0 },
+                if ok { r.right - r.left } else { 0 },
+                if ok { r.bottom - r.top } else { 0 },
+            )
+        }
     }
 
     fn scale_factor(&self) -> f64 {

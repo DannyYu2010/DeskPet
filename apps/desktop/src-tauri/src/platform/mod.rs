@@ -52,6 +52,21 @@ pub trait PetWindow: Send + Sync {
     /// The pet stays visible but suppresses all notification reactions.
     fn is_dnd_active(&self) -> bool;
 
+    /// True while any mouse button is physically held down, anywhere on the
+    /// system.
+    ///
+    /// The hit-test loop uses this to leave click-through alone mid-press.
+    /// Cheap: one call into the window server, polled at 30 Hz.
+    fn mouse_button_down(&self) -> bool;
+
+    /// One-line description of the window's actual on-screen state, for the
+    /// log. Called once after the window is shown.
+    ///
+    /// This exists because "the process did not crash" and "the pet is on the
+    /// screen" are different claims, and the first one is much easier to
+    /// mistake for the second.
+    fn debug_report(&self) -> String;
+
     /// Logical -> physical scale for the display the pet currently sits on.
     /// Needed because the pet moves between monitors with different DPI.
     fn scale_factor(&self) -> f64;

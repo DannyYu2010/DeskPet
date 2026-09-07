@@ -32,21 +32,26 @@
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost"
-    },
-    "trayIcon": {
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
+    "targets": [
+      "dmg",
+      "app",
+      "nsis"
+    ],
+    "icon": [],
     "macOS": {
       "minimumSystemVersion": "12.0"
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "resources": {
+      "../../../packs": "packs"
     }
   }
 }

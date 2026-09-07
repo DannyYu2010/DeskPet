@@ -13,6 +13,64 @@ macOS 12+ and Windows 11. MIT licensed.
 - **Quiet.** Under 0.5% idle CPU and 60 MB resident. Never steals focus, hides during fullscreen apps, respects Do Not Disturb.
 - **One codebase.** ~85-90% shared between macOS and Windows.
 
+## Prerequisites
+
+Three things: Xcode Command Line Tools (macOS), Node.js, and Rust. If you
+already have all three, skip to [Quick start](#quick-start).
+
+### macOS
+
+**1. Xcode Command Line Tools** — provides the C compiler and linker Rust needs.
+
+```bash
+xcode-select --install
+```
+
+**2. Homebrew** — skip if `brew --version` already works.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+The installer prints two `echo ... >> ~/.zprofile` lines when it finishes.
+**Run them.** Without that, `brew` won't be found in a new terminal.
+
+**3. Node.js**
+
+```bash
+brew install node
+```
+
+**4. Rust**
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Accept the defaults. Then `source ~/.cargo/env`, or just open a new terminal.
+
+### Windows 11
+
+**1. Visual Studio Build Tools** — install the "Desktop development with C++"
+workload from <https://visualstudio.microsoft.com/visual-cpp-build-tools/>.
+Rust uses the MSVC linker.
+
+**2. Node.js** — <https://nodejs.org/> (LTS), or `winget install OpenJS.NodeJS.LTS`
+
+**3. Rust** — <https://rustup.rs/>, or `winget install Rustlang.Rustup`
+
+**4. WebView2** — already present on Windows 11. Nothing to do.
+
+### Verify
+
+```bash
+node -v && npm -v && cargo --version
+```
+
+Three version numbers means you're set. A `command not found` means that step
+didn't take effect — open a new terminal first, since installers modify your
+shell profile and existing sessions don't pick that up.
+
 ## Quick start
 
 ```bash
@@ -20,6 +78,20 @@ cd apps/desktop
 npm install
 npm run tauri dev
 ```
+
+The first build compiles several hundred Rust dependencies and takes roughly
+5–10 minutes. It is not stuck. Later builds are seconds.
+
+### If the first run fails
+
+- **`command not found: npm` / `cargo`** — the installer edited your shell
+  profile but this session predates it. Open a new terminal.
+- **linker errors, or `cc` not found** — Command Line Tools (macOS) or Build
+  Tools (Windows) are missing. See Prerequisites.
+- **Rust compile errors in `platform/macos.rs`** — likely an `objc2` API
+  signature change. Open an issue with the error text.
+- **A white box around the pet** — window transparency failed. This is a real
+  bug, not a config problem; please report it.
 
 ## Notifications
 

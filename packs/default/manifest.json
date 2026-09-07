@@ -7,18 +7,23 @@
   "canvas": { "width": 256, "height": 256 },
   "anchor": { "baselineY": 236, "centroidX": 128 },
   "states": {
-    "idle":   { "frames": ["idle_00.webp"], "fps": 1, "loop": true },
-    "walk":   { "frames": ["idle_00.webp"], "fps": 8, "loop": true },
-    "sleep":  { "frames": ["idle_00.webp"], "fps": 1, "loop": true },
-    "poke":   { "frames": ["idle_00.webp"], "fps": 10, "loop": false, "next": "idle" },
-    "notify": { "frames": ["idle_00.webp"], "fps": 6, "loop": false, "next": "idle" }
+    "idle":   { "frames": ["idle_00.webp", "idle_01.webp", "idle_02.webp", "idle_03.webp"], "fps": 8, "loop": true },
+    "walk":   { "frames": ["walk_00.webp", "walk_01.webp", "walk_02.webp", "walk_03.webp"], "fps": 12, "loop": true },
+    "sleep":  { "frames": ["sleep_00.webp"], "fps": 1, "loop": true },
+    "blink":  { "frames": ["blink_00.webp"], "fps": 12, "loop": false, "next": "idle" },
+    "poke":   { "frames": ["poke_00.webp"], "fps": 10, "loop": false, "next": "idle" },
+    "notify": { "frames": ["notify_00.webp"], "fps": 6, "loop": false, "next": "idle" }
   },
   "transitions": {
     "idle":  [{ "to": "walk", "weight": 3 }, { "to": "sleep", "weight": 2, "minBoredom": 0.8 }],
     "walk":  [{ "to": "idle", "weight": 1 }],
     "sleep": [{ "to": "idle", "weight": 1, "maxBoredom": 0.2 }]
   },
-  "gaze": { "enabled": true, "eyes": [{ "x": 108, "y": 110, "radius": 5 }, { "x": 148, "y": 110, "radius": 5 }], "maxOffset": 3 },
+  "gaze": {
+    "enabled": true,
+    "eyes": [{ "x": 108, "y": 164, "radius": 7.5 }, { "x": 148, "y": 164, "radius": 7.5 }],
+    "maxOffset": 3
+  },
   "shadow": { "enabled": true, "opacity": 0.2, "widthRatio": 0.7, "blur": 8 },
   "sourceMap": { "default": "notify" }
 }

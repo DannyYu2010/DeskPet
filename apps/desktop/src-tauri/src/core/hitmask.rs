@@ -105,6 +105,13 @@ impl MaskSet {
     pub fn total_bytes(&self) -> usize {
         self.masks.values().map(|m| m.bytes()).sum()
     }
+
+    /// No pack loaded yet. The hit-test loop leaves the window interactive in
+    /// this state rather than making it click-through, so that a pet without
+    /// masks is still clickable instead of silently inert.
+    pub fn is_empty(&self) -> bool {
+        self.masks.is_empty()
+    }
 }
 
 #[cfg(test)]

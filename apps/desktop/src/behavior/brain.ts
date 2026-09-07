@@ -66,6 +66,19 @@ export class Brain {
     this.boredom = Math.min(1, this.boredom + dt * BOREDOM_PER_SECOND);
 
     const locked = this.now < this.forcedUntil;
+
+    // A non-looping state is a one-shot: once it has played through, it falls
+    // into `next` (see PETPACK_SPEC.md). Without this, `poke` and `notify` are
+    // traps — neither has a `transitions` entry, so nothing else can ever move
+    // the pet out of them and one click freezes the character for good.
+    const def = this.manifest.states[this.state];
+    if (!locked && def && def.loop === false && def.next) {
+      const playedFor = def.frames.length / def.fps;
+      if (this.timeInState >= playedFor) {
+        this.enter(def.next, 0);
+      }
+    }
+
     if (!locked && this.timeInState >= MIN_STATE_SECONDS) {
       const next = this.pick(this.state);
       if (next && next !== this.state) this.enter(next, 0);
@@ -97,7 +110,7 @@ export class Brain {
       r -= t.weight ?? 1;
       if (r <= 0) return t.to;
     }
-    return options[options.length - 1].to;
+    return options[options.length - 1]?.to ?? null;
   }
 
   private enter(state: StateName, lockSeconds: number): void {
@@ -108,12 +121,20 @@ export class Brain {
   }
 
   /**
-   * A single-frame looping state has nothing to redraw. Reporting this lets
-   * the renderer stop the rAF loop entirely, which is how idle CPU reaches
-   * ~0% rather than "low".
+   * True only when nothing is moving *and* nothing is pending. Lets the
+   * renderer stop the rAF loop entirely, which is how idle CPU reaches ~0%
+   * rather than "low".
    */
   private isQuiescent(): boolean {
     const def = this.manifest.states[this.state];
-    return !!def && def.frames.length <= 1;
+    if (!def) return false;
+
+    // A one-shot state still owes us the fall-through into `next`. Parking the
+    // render loop here would make a temporary reaction permanent: the loop
+    // stops, `tick` is never called again, and the transition never happens.
+    // "Nothing is moving right now" is not the same as "nothing is pending".
+    if (def.loop === false) return false;
+
+    return def.frames.length <= 1;
   }
 }

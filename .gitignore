@@ -4,3 +4,6 @@ target/
 *.pet
 models/
 .DS_Store
+logs/
+Claude outputs/
+apps/desktop/src-tauri/gen/
