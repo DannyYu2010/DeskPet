@@ -12,6 +12,8 @@ use tauri::{
     Manager, WebviewWindow,
 };
 
+use anyhow::Context;
+
 use crate::core::{config::Config, hitmask::MaskSet, webhook};
 use crate::platform::{PetWindow, StackLevel};
 
@@ -42,6 +44,113 @@ fn set_current_frame(state: tauri::State<Arc<AppState>>, frame_id: String) {
 #[tauri::command]
 fn frontend_log(level: String, message: String) {
     eprintln!("[deskpet/web] {level}: {message}");
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub pack_id: String,
+    pub backend: String,
+    /// First frame as a `data:` URL, so the settings window can show the
+    /// cutout without reading the pack back off disk.
+    pub preview: String,
+    pub frames: usize,
+}
+
+/// Turn a picture into the active pet.
+///
+/// Runs on Tauri's blocking command thread: matting a photo is hundreds of
+/// milliseconds of pixel work and has no business on the main thread, where it
+/// would freeze the pet mid-animation.
+#[tauri::command]
+async fn import_image(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    file_name: String,
+    data_base64: String,
+) -> Result<ImportResult, String> {
+    use base64::Engine;
+    use tauri::{Emitter, Manager};
+
+    let run = || -> anyhow::Result<ImportResult> {
+        use crate::core::import::{self, Matte};
+
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data_base64.as_bytes())
+            .context("the image did not survive the trip from the settings window")?;
+        let source = image::load_from_memory(&bytes)
+            .with_context(|| format!("decoding {file_name}"))?
+            .to_rgba8();
+
+        let matte = import::BorderFloodMatte::default();
+        let cut = matte.cut_out(&source)?;
+        let (canvas, anchor) = import::fit_to_canvas(&cut)?;
+
+        // Four-step breathing cycle: rest, half, full, half. Reusing the half
+        // frame on the way back keeps the loop symmetric without a fifth file.
+        let cycle = import::breathe(&canvas, &anchor, &[0.0, 0.5, 1.0, 0.5]);
+        let frames: Vec<(String, image::RgbaImage)> = cycle
+            .into_iter()
+            .enumerate()
+            .map(|(i, img)| (format!("idle_{i:02}.png"), img))
+            .collect();
+
+        let root = app
+            .path()
+            .app_data_dir()
+            .context("no app data directory")?
+            .join("packs");
+
+        // One id, reused. Re-importing replaces the previous attempt instead of
+        // filling the folder with half-liked pets; the sprites directory is
+        // cleared first so a shorter cycle cannot leave stale frames behind.
+        let pack_id = "imported".to_string();
+        let sprites = root.join(&pack_id).join("sprites");
+        if sprites.exists() {
+            std::fs::remove_dir_all(&sprites).ok();
+        }
+
+        let name = std::path::Path::new(&file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Imported")
+            .to_string();
+
+        let dir = import::write_pack(&root, &pack_id, &name, &frames, &anchor)?;
+
+        // Load it the same way the app would on boot, so a pack that cannot be
+        // loaded fails here — while the user is looking at the settings window
+        // — rather than silently on next launch.
+        let (loaded, masks) = crate::core::pack::load(&dir)?;
+        *state.masks.lock().unwrap() = masks;
+
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.active_pack = pack_id.clone();
+            cfg.save(&app).ok();
+        }
+
+        let preview = loaded
+            .frames
+            .get(&frames[0].0)
+            .cloned()
+            .unwrap_or_default();
+
+        // The pet window rebuilds itself from scratch. Blunt, but a reload is
+        // the one path already proven to produce a correct pet.
+        app.emit_to("pet", "deskpet://pack-changed", ()).ok();
+
+        tracing::info!(pack = %pack_id, backend = matte.name(), "imported a pack");
+
+        Ok(ImportResult {
+            pack_id,
+            backend: matte.name().to_string(),
+            preview,
+            frames: frames.len(),
+        })
+    };
+
+    run().map_err(|e| format!("{e:#}"))
 }
 
 /// Load the active pack: manifest to the frontend, hitmasks into shared state.
@@ -164,10 +273,25 @@ pub fn run() {
             set_current_frame,
             get_config,
             frontend_log,
-            load_active_pack
+            load_active_pack,
+            import_image
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // No Dock slot, no Cmd-Tab entry, no application menu — the pet
+            // lives on the desktop and in the menu bar. Quit is in the tray
+            // menu, which this makes the only way out.
+            if let Err(e) = platform::hide_from_dock() {
+                tracing::warn!("could not hide from the Dock: {e:#}");
+            }
+
+            // Still worth setting: an accessory app has no Dock icon, but the
+            // system still shows this icon in permission prompts and
+            // notifications.
+            if let Err(e) = platform::set_app_icon(include_bytes!("../icons/icon.png")) {
+                tracing::warn!("could not set the app icon: {e:#}");
+            }
 
             let mut cfg = Config::load(&handle);
             if cfg.webhook_token.is_empty() {
@@ -205,7 +329,23 @@ pub fn run() {
             let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings, &quit])?;
 
+            // The menu bar icon is embedded rather than read from the bundle:
+            // a tray item with no icon is an invisible blank slot in the menu
+            // bar, which reads as a broken app, and that failure mode should
+            // not depend on resource packaging being right.
+            //
+            // `tray.png` is a template image — black plus alpha, no colour —
+            // so macOS tints it for light, dark and highlighted menu bars.
+            // `icon_as_template(true)` is what asks for that treatment; a
+            // coloured icon here looks fine until the appearance changes.
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray.png"
+            ))?;
+
             TrayIconBuilder::new()
+                .icon(tray_icon)
+                .icon_as_template(true)
+                .tooltip("DeskPet")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
@@ -232,6 +372,11 @@ pub fn run() {
 }
 
 fn open_settings(app: &tauri::AppHandle) {
+    // An accessory app is not activated by clicking, so a window opened from
+    // the tray would appear behind whatever the user was looking at and would
+    // not take keystrokes. They just asked for it; bring the app forward.
+    let _ = platform::activate_app();
+
     if let Some(w) = app.get_webview_window("settings") {
         let _ = w.set_focus();
         return;

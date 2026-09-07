@@ -3,5 +3,6 @@
 
 pub mod config;
 pub mod hitmask;
+pub mod import;
 pub mod pack;
 pub mod webhook;

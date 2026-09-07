@@ -49,6 +49,81 @@ macro_rules! step {
     };
 }
 
+/// Replace the Dock icon with a full-resolution image.
+///
+/// `tauri dev` runs the bare binary, not an `.app`, so there is no `Info.plist`
+/// and no `.icns` — the Dock falls back to the small PNG `tauri-build` embeds
+/// and scales it up, which looks exactly as bad as it sounds. Setting the icon
+/// on `NSApplication` works in both dev and a bundle, so the icon is right
+/// while developing without waiting on packaging to be correct.
+pub fn set_dock_icon(png: &[u8]) -> Result<()> {
+    unsafe {
+        let data_cls = AnyClass::get(c"NSData").context("NSData not registered")?;
+        let data: *mut AnyObject = msg_send![
+            data_cls,
+            dataWithBytes: png.as_ptr().cast::<std::ffi::c_void>(),
+            length: png.len()
+        ];
+        anyhow::ensure!(!data.is_null(), "NSData allocation failed");
+
+        let image_cls = AnyClass::get(c"NSImage").context("NSImage not registered")?;
+        let image: *mut AnyObject = msg_send![image_cls, alloc];
+        let image: *mut AnyObject = msg_send![image, initWithData: &*data];
+        anyhow::ensure!(!image.is_null(), "the icon PNG could not be decoded");
+
+        let app_cls =
+            AnyClass::get(c"NSApplication").context("NSApplication not registered")?;
+        let ns_app: *mut AnyObject = msg_send![app_cls, sharedApplication];
+        let _: () = msg_send![ns_app, setApplicationIconImage: &*image];
+    }
+    Ok(())
+}
+
+/// Take the app out of the Dock and out of Cmd-Tab.
+///
+/// A desktop pet has no business occupying a Dock slot: it has no main window,
+/// it is never "opened", and it already has a menu bar item. `Accessory` is the
+/// policy for exactly this — a background app with UI.
+///
+/// Called via raw AppKit rather than Tauri's `set_activation_policy` so it does
+/// not depend on which Tauri release exposes it on `AppHandle` versus `App`.
+///
+/// Consequences, so nobody is surprised later:
+///   - no Dock icon, no Cmd-Tab entry, and no application menu bar. Quit lives
+///     in the tray menu, which is now the only way out.
+///   - windows the app opens do not come forward on their own; see
+///     `activate()`.
+pub fn use_accessory_policy() -> Result<()> {
+    const NS_APPLICATION_ACTIVATION_POLICY_ACCESSORY: isize = 1;
+    unsafe {
+        let cls = AnyClass::get(c"NSApplication").context("NSApplication not registered")?;
+        let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+        anyhow::ensure!(!ns_app.is_null(), "no shared NSApplication");
+        let ok: bool = msg_send![
+            ns_app,
+            setActivationPolicy: NS_APPLICATION_ACTIVATION_POLICY_ACCESSORY
+        ];
+        anyhow::ensure!(ok, "the window server refused the accessory policy");
+    }
+    Ok(())
+}
+
+/// Bring the app forward.
+///
+/// An accessory app is never activated by clicking its windows, which is the
+/// point — but it means a window opened from the tray menu would appear behind
+/// whatever the user was looking at, and would not take keyboard input. This is
+/// the deliberate exception: settings is a window the user just asked for.
+pub fn activate() -> Result<()> {
+    unsafe {
+        let cls = AnyClass::get(c"NSApplication").context("NSApplication not registered")?;
+        let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+        anyhow::ensure!(!ns_app.is_null(), "no shared NSApplication");
+        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+    }
+    Ok(())
+}
+
 pub struct MacPetWindow {
     window: tauri::WebviewWindow,
     click_through: AtomicBool,

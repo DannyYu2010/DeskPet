@@ -72,6 +72,52 @@ pub trait PetWindow: Send + Sync {
     fn scale_factor(&self) -> f64;
 }
 
+/// Give the app a full-resolution icon where the OS wants one set at runtime.
+///
+/// macOS needs this because `tauri dev` has no bundle to read an icon from.
+/// Windows takes its icon from the executable's resources, so there is nothing
+/// to do there — the no-op is the correct implementation, not a stub.
+pub fn set_app_icon(png: &[u8]) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        return macos::set_dock_icon(png);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = png;
+        Ok(())
+    }
+}
+
+/// Run without a Dock / taskbar presence.
+///
+/// On Windows the equivalent is `skipTaskbar` on the window, which is already
+/// set in tauri.conf.json, so there is nothing to do at runtime.
+pub fn hide_from_dock() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        return macos::use_accessory_policy();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
+/// Bring the app forward so a window the user just asked for is actually
+/// usable. Only needed where hiding from the Dock also stops the app being
+/// activated by a click.
+pub fn activate_app() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        return macos::activate();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
 /// Construct the platform implementation for a Tauri window.
 pub fn attach(window: &tauri::WebviewWindow) -> Result<Box<dyn PetWindow>> {
     #[cfg(target_os = "macos")]

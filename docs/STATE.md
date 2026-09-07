@@ -21,6 +21,7 @@ a cloud model may be offered as an opt-in, never as the default path.
 | Task | Agent | Notes |
 |---|---|---|
 | Transparent `NSPanel` on real macOS | `claude` | Focus + drag verified. Transparency / click-through / Spaces still unverified. |
+| Import pipeline | `claude` | End to end and working. Matte backend is still the placeholder. |
 
 Claim a task by adding a row before you start.
 
@@ -33,21 +34,26 @@ Ordered. The first item gates everything else.
    gated the architecture), and the pet drags. Still unverified: transparency
    over a mid-tone background, click-through in the empty corners, and
    following across Spaces. Minutes of work now that the app runs.
-2. **The import pipeline** — this is the product, everything below serves it.
-   1. Settings UI: pick an image.
-   2. Matting (BiRefNet, MIT). Runs on the user's machine.
-   3. Edge decontamination — unpremultiply, colour decontamination, guided
+2. **A real matte.** Everything else in the import pipeline works; the cutout
+   is the placeholder `BorderFloodMatte`, which floods inward from the border
+   and only survives a plain background. Owner chose macOS Vision first
+   (`VNGenerateForegroundInstanceMaskRequest`, macOS 14+): no download, no
+   model licence to audit, good quality. BiRefNet via ONNX stays the portable
+   answer for Windows and older macOS. Both sit behind `core::import::Matte`,
+   which takes pixels and returns pixels.
+3. **Edge decontamination** — unpremultiply, colour decontamination, guided
       filter, ~1px feather. Matting alone leaves a halo of the original
       background and the cutout reads as pasted on.
-   4. Anchor detection — foot baseline and horizontal centroid from alpha.
-   5. Procedural animation from a single still: squash/stretch breathing,
-      blink, lean. A one-frame pack is already valid; the runtime makes it
-      move.
-   6. Write a `.pet` and make it the active pack.
-   Open question below: where the ONNX runtime lives.
-3. **First end-to-end webhook** — `curl` → the pet reacts.
-4. **Gaze tracking** — needs eyes as separate art, so it depends on how the
+   — unpremultiply, colour decontamination, guided filter, ~1px feather.
+   Matting alone leaves a halo of the original background and the cutout reads
+   as pasted on. Only meaningful once the matte produces real soft edges; the
+   placeholder's edges are binary.
+4. **First end-to-end webhook** — `curl` → the pet reacts.
+5. **Gaze tracking** — needs eyes as separate art, so it depends on how the
    import pipeline decomposes a photo. Deferred until then.
+
+Done in this pass: settings UI, anchor detection from alpha, breathing frames
+from a single still, pack writing, and hot-swapping the active pack.
 
 ## Open questions
 
@@ -121,6 +127,13 @@ Newest first. One line per session. Never edit another agent's entry.
   moves, so one bad sample cut the window off from the mouse and the drag
   hung. New rule, in the trait as `mouse_button_down`: never change
   interactivity while a button is held.
+  (7) The tray item had no icon at all and the app icon list was empty, so the
+  menu bar showed a blank slot — which reads as a broken app. Menu bar icon is
+  a template image (black + alpha, tinted by the system); the app icon follows
+  Apple's grid, since macOS does *not* round app icons the way iOS does.
+  Also: the app is now an accessory app — no Dock slot, no Cmd-Tab, no
+  application menu. Quit is in the tray menu; `open_settings` explicitly
+  activates, because an accessory app is not brought forward by a click.
   Also: `load_active_pack` implemented (`core::pack`, with validation and
   hitmask building), the default CC0 pack generated (12 frames), the sprite
   renderer and contact shadow written, `AppState` collapsed to one `Arc`, and

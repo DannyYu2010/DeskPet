@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- No CSP meta tag. See index.html and docs/HANDOFF.md — the app has one
+         CSP and it lives in tauri.conf.json. -->
+    <title>DeskPet</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --ink: #1b1f27;
+        --muted: #6b7280;
+        --line: #e3e6ea;
+        --accent: #3b7ddd;
+        --bad: #b4232c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1b1d21;
+          --panel: #24272c;
+          --ink: #eceff3;
+          --muted: #9aa2ad;
+          --line: #34383e;
+          --accent: #6aa4f5;
+          --bad: #ff8a8a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px 32px 36px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      h1 { font-size: 17px; margin: 0 0 4px; }
+      p.lede { margin: 0 0 22px; color: var(--muted); max-width: 52ch; }
+
+      #drop {
+        border: 1.5px dashed var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        padding: 30px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color .15s, background .15s;
+      }
+      #drop:hover, #drop.over { border-color: var(--accent); }
+      #drop strong { display: block; margin-bottom: 4px; }
+      #drop span { color: var(--muted); }
+      input[type=file] { display: none; }
+
+      .row { display: flex; gap: 20px; margin-top: 22px; align-items: flex-start; }
+      .cell { flex: 1; min-width: 0; }
+      .cell h2 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+        color: var(--muted); margin: 0 0 8px; font-weight: 600;
+      }
+      .plate {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 10px; height: 190px;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+      }
+      /* Checkerboard, so a transparent cutout is legible as transparent
+         rather than as white. */
+      .plate.alpha {
+        background-image:
+          linear-gradient(45deg, rgba(128,128,128,.18) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(128,128,128,.18) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(128,128,128,.18) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(128,128,128,.18) 75%);
+        background-size: 14px 14px;
+        background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+      }
+      .plate img { max-width: 100%; max-height: 100%; display: block; }
+      .plate .empty { color: var(--muted); font-size: 12px; }
+
+      .actions { margin-top: 22px; display: flex; align-items: center; gap: 14px; }
+      button {
+        font: inherit; font-weight: 500;
+        padding: 8px 18px; border-radius: 8px; border: 1px solid transparent;
+        background: var(--accent); color: #fff; cursor: pointer;
+      }
+      button:disabled { opacity: .45; cursor: default; }
+      #status { color: var(--muted); }
+      #status.bad { color: var(--bad); }
+
+      footer { margin-top: 26px; color: var(--muted); font-size: 12px; max-width: 60ch; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+    </style>
+  </head>
+  <body>
+    <h1>Make a pet from a picture</h1>
+    <p class="lede">
+      Pick a photo and the subject becomes the character on your desktop.
+      Works best on something shot against a plain background.
+    </p>
+
+    <div id="drop">
+      <strong>Choose an image</strong>
+      <span>or drag one here — PNG, JPEG or WebP</span>
+      <input id="file" type="file" accept="image/png,image/jpeg,image/webp" />
+    </div>
+
+    <div class="row">
+      <div class="cell">
+        <h2>Your picture</h2>
+        <div class="plate" id="plate-src"><span class="empty">nothing chosen</span></div>
+      </div>
+      <div class="cell">
+        <h2>Cutout</h2>
+        <div class="plate alpha" id="plate-out"><span class="empty">no result yet</span></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="go" disabled>Make this my pet</button>
+      <span id="status"></span>
+    </div>
+
+    <footer id="backend"></footer>
+
+    <script type="module" src="/src/settings.ts"></script>
+  </body>
+</html>

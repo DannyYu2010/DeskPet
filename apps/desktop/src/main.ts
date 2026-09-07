@@ -205,6 +205,15 @@ async function boot() {
     budgetFps = UNFOCUSED_FPS;
   });
 
+  // A new pack means new textures, new masks, a new brain. Rebuilding this
+  // module in place would mean unwinding every listener and every cached
+  // texture correctly; a reload re-runs the one boot path that is known to
+  // produce a correct pet.
+  await listen("deskpet://pack-changed", () => {
+    log("info", "active pack changed, reloading");
+    window.location.reload();
+  });
+
   await listen<Notification>("deskpet://notify", (event) => {
     // Mapping source -> animation is a pack decision, not a runtime one.
     // TODO: route to the mapped state once the pack pipeline lands.
