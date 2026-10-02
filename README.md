@@ -23,6 +23,18 @@ Pet media, generated packs, and personal settings are stored locally by default.
 
 DeskPet is MIT licensed.
 
+## How to use DeskPet
+
+1. Download the installer for your system from the [latest GitHub Release](https://github.com/DannyYu2010/DeskPet/releases/latest), then install and launch DeskPet.
+2. Open the DeskPet menu-bar or system-tray icon and choose **Settings**.
+3. In **Fixed state media**, upload **Daily companion** first. This is the required animation shown during normal use.
+4. Optionally upload **Sleep**, **Lie down**, and **Wake up** media. If a transition is missing, DeskPet switches directly between the available states.
+5. To add an interaction, enter an action name, choose **Single click** or **Double click**, and upload the corresponding image or short video.
+6. Choose how long DeskPet should wait before sleeping, and enable **Launch at login** if desired.
+7. Click **Use as my desktop pet**. Drag the visible pet to place it anywhere on the desktop.
+
+Supported imports are PNG, JPEG, WebP, MP4, and MOV. Keep short videos at 10 seconds or less. Pet media and generated packs stay on the local computer by default.
+
 ## Goals
 
 - **Looks attached to the desktop.** Contact shadows, per-pixel click-through, gaze tracking, no focus stealing.

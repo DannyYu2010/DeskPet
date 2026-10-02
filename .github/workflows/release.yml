@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            bundle: dmg
+            artifact: macos
+          - name: Windows 11 x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+            artifact: windows
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - run: npm ci
+        working-directory: apps/desktop
+
+      - name: Build Windows asset pipeline
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p deskpet-assetpipe
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/binaries | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/deskpet-assetpipe.exe" `
+            "apps/desktop/src-tauri/binaries/deskpet-assetpipe-${{ matrix.target }}.exe"
+
+      - name: Build installer
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+        working-directory: apps/desktop
+
+      - name: Collect macOS installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir release-assets
+          cp target/${{ matrix.target }}/release/bundle/dmg/*.dmg \
+            "release-assets/DeskPet_${version}_macOS_AppleSilicon.dmg"
+
+      - name: Collect Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          $installer = Get-ChildItem "target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          Copy-Item $installer.FullName "release-assets/DeskPet_${version}_Windows11_x64_Setup.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release and upload installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "DeskPet ${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
