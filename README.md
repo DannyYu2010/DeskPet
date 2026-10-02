@@ -1,24 +1,9 @@
 # DeskPet
 
-## 中文介绍
-
-DeskPet 是一款支持 macOS 12+ 和 Windows 11 的真实质感桌面宠物应用。它使用透明动画、逐像素点击区域和桌面接触阴影，让宠物自然地待在桌面上，同时避免遮挡透明区域或抢占当前窗口焦点。
-
-你可以上传自己的宠物图片或短视频，分别配置日常陪伴、睡眠、进入睡眠和醒来起身等状态，也可以创建“奔跑”“跳跃”等自定义动作并绑定单击或双击。长时间没有互动时，宠物会自动进入睡眠；再次互动后，它会通过对应的过渡动画回到日常陪伴状态。
-
-宠物素材、生成的素材包和个人设置优先保存在本机。应用卸载后，用户导入的素材包可以继续保留，方便重新安装后继续使用。
-
-主要功能：
-
-- 上传 PNG、JPEG、WebP、MP4 或 MOV 素材。
-- 自动抠图、清理边缘、统一尺寸与位置，并生成桌面宠物素材包。
-- 配置日常陪伴、睡眠以及双向过渡动画。
-- 自定义单击和双击动作。
-- 支持拖动宠物、透明区域点击穿透和按当前动作自动收缩互动边界。
-- 支持设置睡眠等待时间和是否开机自启。
-- 一套代码同时支持 macOS 与 Windows。
-
-## English Introduction
+<p align="center">
+  <a href="./README.md"><strong>English</strong></a> |
+  <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
 DeskPet is a lifelike desktop-pet application for macOS 12+ and Windows 11. Transparent animation, per-pixel hit testing, and contact shadows make the pet feel attached to the desktop while keeping transparent areas click-through and avoiding focus stealing.
 
@@ -26,7 +11,7 @@ Users can import pet images or short videos and assign them to daily companionsh
 
 Pet media, generated packs, and personal settings are stored locally by default. User-imported packs can remain available after uninstalling the application, ready for a later reinstall.
 
-Key features:
+## Key features
 
 - Import PNG, JPEG, WebP, MP4, and MOV media.
 - Automatically matte, clean, align, normalize, and package imported material.
