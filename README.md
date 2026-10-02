@@ -35,6 +35,8 @@ DeskPet is MIT licensed.
 
 Supported imports are PNG, JPEG, WebP, MP4, and MOV. Keep short videos at 10 seconds or less. Pet media and generated packs stay on the local computer by default.
 
+The macOS package is currently distributed without Apple notarization. If macOS blocks the first launch, Control-click DeskPet in Applications, choose **Open**, and confirm once.
+
 ## Goals
 
 - **Looks attached to the desktop.** Contact shadows, per-pixel click-through, gaze tracking, no focus stealing.

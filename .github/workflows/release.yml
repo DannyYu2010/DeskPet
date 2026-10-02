@@ -18,7 +18,7 @@ jobs:
           - name: macOS Apple Silicon
             os: macos-latest
             target: aarch64-apple-darwin
-            bundle: dmg
+            bundle: app
             artifact: macos
           - name: Windows 11 x64
             os: windows-latest
@@ -62,10 +62,22 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          app="target/${{ matrix.target }}/release/bundle/macos/DeskPet.app"
+          staging="$(mktemp -d)"
           mkdir release-assets
-          cp target/${{ matrix.target }}/release/bundle/dmg/*.dmg \
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          ditto "$app" "$staging/DeskPet.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create \
+            -volname "DeskPet ${version}" \
+            -srcfolder "$staging" \
+            -ov \
+            -format UDZO \
             "release-assets/DeskPet_${version}_macOS_AppleSilicon.dmg"
+          rm -rf "$staging"
 
       - name: Collect Windows installer
         if: runner.os == 'Windows'
