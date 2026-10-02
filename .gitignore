@@ -7,3 +7,17 @@ models/
 logs/
 Claude outputs/
 apps/desktop/src-tauri/gen/
+target/
+
+# Local generated pet assets and visual QA
+work/
+
+# Wangwang is a private personal-use pack. It is copied into local release
+# builds, but must never be pushed to a public repository.
+packs/wangwang/
+apps/desktop/src-tauri/binaries/
+
+# Local installers, handoff bundles and private character production notes.
+deliverables/
+docs/WANGWANG_MOTION.md
+tools/*wangwang*.py

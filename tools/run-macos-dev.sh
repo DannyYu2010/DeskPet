@@ -45,10 +45,22 @@ LOG="$REPO/logs/dev-$STAMP.log"
   echo "rustc: $(rustc --version 2>&1 || echo MISSING)"
   echo "node:  $(node --version 2>&1 || echo MISSING)"
   echo "xcode-select: $(xcode-select -p 2>&1 || echo MISSING)"
-  echo
-  echo "=== npm run tauri dev ==="
 } >"$LOG" 2>&1
 
+# The cutout pipeline is a separate binary and must exist before an import can
+# work. Building it here means its errors land in the same log as everything
+# else — a build run by hand in another terminal is invisible to the agent.
+echo "=== cargo build -p deskpet-assetpipe ===" >>"$LOG"
+( cd "$REPO" && cargo build -p deskpet-assetpipe ) 2>&1 | tee -a "$LOG"
+PIPE_STATUS="${PIPESTATUS[0]}"
+if [ "$PIPE_STATUS" -ne 0 ]; then
+  echo "=== assetpipe build FAILED (status $PIPE_STATUS); not starting the app ===" | tee -a "$LOG"
+  rm -f "$REPO/logs/latest.log"; cp "$LOG" "$REPO/logs/latest.log"
+  echo; echo "Full log: $LOG"
+  exit "$PIPE_STATUS"
+fi
+
+echo "=== npm run tauri dev ===" >>"$LOG"
 cd "$REPO/apps/desktop" || exit 1
 npm run tauri dev 2>&1 | tee -a "$LOG"
 STATUS="${PIPESTATUS[0]}"

@@ -28,6 +28,10 @@ export interface Manifest {
   anchor: { baselineY: number; centroidX: number };
   states: Record<StateName, StateDef>;
   transitions?: Record<StateName, Transition[]>;
+  /** Optional user-selected gesture -> one-shot state bindings. */
+  interactions?: Partial<Record<"singleClick" | "doubleClick", StateName>>;
+  /** Human-readable names for custom states, such as “奔跑”. */
+  actionLabels?: Record<StateName, string>;
   gaze?: {
     enabled: boolean;
     eyes: { x: number; y: number; radius: number }[];

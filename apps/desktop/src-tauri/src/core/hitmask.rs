@@ -24,6 +24,8 @@ pub struct HitMask {
     height: u32,
     downscale: u32,
     bits: Vec<u64>,
+    /// Tight alpha bounds in source pixels: left, top, exclusive right/bottom.
+    bounds: Option<(u32, u32, u32, u32)>,
 }
 
 impl HitMask {
@@ -33,6 +35,21 @@ impl HitMask {
         let mw = width.div_ceil(downscale);
         let mh = height.div_ceil(downscale);
         let mut bits = vec![0u64; ((mw * mh) as usize).div_ceil(64)];
+        let mut bounds: Option<(u32, u32, u32, u32)> = None;
+
+        for y in 0..height {
+            for x in 0..width {
+                let alpha = rgba[((y * width + x) * 4 + 3) as usize];
+                if alpha > ALPHA_THRESHOLD {
+                    bounds = Some(match bounds {
+                        Some((left, top, right, bottom)) => {
+                            (left.min(x), top.min(y), right.max(x + 1), bottom.max(y + 1))
+                        }
+                        None => (x, y, x + 1, y + 1),
+                    });
+                }
+            }
+        }
 
         for my in 0..mh {
             for mx in 0..mw {
@@ -64,7 +81,13 @@ impl HitMask {
             }
         }
 
-        Self { width, height, downscale, bits }
+        Self {
+            width,
+            height,
+            downscale,
+            bits,
+            bounds,
+        }
     }
 
     /// Test a point in window-local logical pixels.
@@ -85,6 +108,17 @@ impl HitMask {
     pub fn bytes(&self) -> usize {
         self.bits.len() * 8
     }
+
+    /// Whether a point is inside the tightest rectangle containing this
+    /// frame's visible pixels. Used for gaze/tilt: transparent padding must
+    /// not make the pet react, while gaps inside the silhouette remain part
+    /// of the character's natural width and height.
+    #[inline]
+    pub fn within_bounds(&self, x: f64, y: f64) -> bool {
+        self.bounds.is_some_and(|(left, top, right, bottom)| {
+            x >= left as f64 && y >= top as f64 && x < right as f64 && y < bottom as f64
+        })
+    }
 }
 
 /// All masks for a loaded pack, keyed by frame id from the manifest.
@@ -100,6 +134,12 @@ impl MaskSet {
 
     pub fn hit(&self, frame_id: &str, x: f64, y: f64) -> bool {
         self.masks.get(frame_id).is_some_and(|m| m.hit(x, y))
+    }
+
+    pub fn within_bounds(&self, frame_id: &str, x: f64, y: f64) -> bool {
+        self.masks
+            .get(frame_id)
+            .is_some_and(|m| m.within_bounds(x, y))
     }
 
     pub fn total_bytes(&self) -> usize {
@@ -144,6 +184,16 @@ mod tests {
         let rgba = solid_square(64, 64, 30, 0, 1, 64);
         let m = HitMask::from_rgba(&rgba, 64, 64, 4);
         assert!(m.hit(30.0, 32.0));
+    }
+
+    #[test]
+    fn tight_bounds_exclude_transparent_padding() {
+        let rgba = solid_square(64, 64, 16, 20, 32, 24);
+        let m = HitMask::from_rgba(&rgba, 64, 64, 4);
+        assert!(m.within_bounds(16.0, 20.0));
+        assert!(m.within_bounds(47.9, 43.9));
+        assert!(!m.within_bounds(32.0, 19.9));
+        assert!(!m.within_bounds(48.0, 32.0));
     }
 
     #[test]

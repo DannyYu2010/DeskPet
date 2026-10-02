@@ -129,12 +129,43 @@ async function boot() {
 
   reportOverflow();
 
-  const brain = new Brain(manifest);
+  const config = (await invoke("get_config")) as { sleep_after_seconds?: number };
+  const sleepAfterSeconds = config.sleep_after_seconds ?? 90;
+  const brain = new Brain(manifest, sleepAfterSeconds);
+  log("info", `sleep after ${sleepAfterSeconds}s without interaction`);
+
+  await listen<number>("deskpet://sleep-after-changed", (event) => {
+    brain.setSleepAfterSeconds(event.payload);
+    log("info", `sleep time changed to ${event.payload}s`);
+    wake();
+  });
+
+  // The window is click-through over its empty corners, so mousemove never
+  // reaches this document out there. Rust's hit-test loop is the only thing
+  // that knows where the cursor is; it tells us, bounded to when the pointer
+  // is actually near.
+  let cursorNear = false;
+  await listen<[number, number]>("deskpet://cursor", (e) => {
+    cursorNear = true;
+    pet.lookAt(e.payload[0], e.payload[1]);
+    wake();
+  });
+  await listen("deskpet://cursor-away", () => {
+    cursorNear = false;
+    pet.lookAt(null, null);
+    wake();
+  });
+  await listen("deskpet://pointer-over-pet", () => {
+    brain.handle({ kind: "cursor_near" });
+    wake();
+  });
 
   let running = false;
   let last = performance.now();
   let budgetFps = FOCUSED_FPS;
   let accumulator = 0;
+  let lastState = "";
+  let lastBoredomBucket = -1;
 
   function wake() {
     if (running) return;
@@ -144,7 +175,11 @@ async function boot() {
   }
 
   function frame(now: number) {
-    const dt = Math.min((now - last) / 1000, 0.1);
+    // Behaviour follows wall time even when macOS throttles a background
+    // webview to one callback per second. PetRenderer clamps its own spring
+    // integration step, so using the real elapsed time here cannot explode
+    // the visual physics.
+    const dt = Math.min((now - last) / 1000, 1.0);
     last = now;
 
     // Frame pacing: skip render work rather than skip ticks, so behaviour
@@ -153,31 +188,49 @@ async function boot() {
     const step = 1 / budgetFps;
 
     const out = brain.tick(dt);
+    if (out.state !== lastState) {
+      log("info", `behaviour state: ${lastState || "<start>"} -> ${out.state}`);
+      lastState = out.state;
+    }
+    const boredomBucket = Math.floor(out.boredom * 4);
+    if (boredomBucket !== lastBoredomBucket) {
+      log("info", `behaviour inactivity: ${Math.min(boredomBucket * 25, 100)}% in ${out.state}`);
+      lastBoredomBucket = boredomBucket;
+    }
+
+    pet.update(dt);
 
     if (accumulator >= step) {
       accumulator = 0;
-      pet.setFrame(currentFrameId(out.state));
+      pet.setFrame(currentFrameId(out.state, out.stateElapsedSeconds));
       app.render();
       // Report the displayed frame so the Rust hit-test loop knows which
       // mask to consult.
-      void invoke("set_current_frame", { frameId: currentFrameId(out.state) });
+      void invoke("set_current_frame", {
+        frameId: currentFrameId(out.state, out.stateElapsedSeconds),
+      });
     }
 
-    if (out.quiescent) {
+    // The brain only knows about animation frames. A settling tilt is motion
+    // too, and parking the loop mid-spring leaves the pet frozen at an angle.
+    if (out.quiescent && !pet.moving && !cursorNear) {
       // Nothing is moving. Stop entirely — this is the difference between
       // "low CPU" and "no CPU".
       running = false;
-      pet.setFrame(currentFrameId(out.state));
+      pet.setFrame(currentFrameId(out.state, out.stateElapsedSeconds));
       app.render();
       return;
     }
     requestAnimationFrame(frame);
   }
 
-  function currentFrameId(state: string): string {
+  function currentFrameId(state: string, stateElapsedSeconds: number): string {
     const def = manifest.states[state];
     if (!def || def.frames.length === 0) return "";
-    const i = Math.floor((performance.now() / 1000) * def.fps) % def.frames.length;
+    const frame = Math.floor(stateElapsedSeconds * def.fps);
+    const i = def.loop
+      ? frame % def.frames.length
+      : Math.min(frame, def.frames.length - 1);
     return def.frames[i] ?? "";
   }
 
@@ -188,12 +241,37 @@ async function boot() {
     },
     onDragEnd: () => {
       brain.handle({ kind: "drag_end" });
+      void invoke("save_window_position").catch((e) =>
+        log("error", `saving pet position failed: ${describe(e)}`),
+      );
       wake();
     },
-    onClick: () => {
-      brain.handle({ kind: "poke" });
-      wake();
-    },
+    onClick: (() => {
+      let pendingSingle: number | null = null;
+      const single = manifest.interactions?.singleClick;
+      const double = manifest.interactions?.doubleClick;
+      const play = (state?: string) => {
+        brain.handle(state ? { kind: "action", state } : { kind: "poke" });
+        wake();
+      };
+
+      return () => {
+        if (!double) {
+          play(single);
+          return;
+        }
+        if (pendingSingle !== null) {
+          window.clearTimeout(pendingSingle);
+          pendingSingle = null;
+          play(double);
+          return;
+        }
+        pendingSingle = window.setTimeout(() => {
+          pendingSingle = null;
+          play(single);
+        }, 250);
+      };
+    })(),
     onError: (m) => log("error", m),
   });
 

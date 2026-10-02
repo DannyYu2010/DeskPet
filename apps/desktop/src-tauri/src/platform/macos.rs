@@ -28,10 +28,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
-use tauri::Manager;
 use objc2_app_kit::{
     NSMainMenuWindowLevel, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
+use tauri::Manager;
 
 extern "C" {
     /// Declared here rather than taken from `objc2::ffi` so that an objc2
@@ -47,6 +47,59 @@ macro_rules! step {
     ($($arg:tt)*) => {
         eprintln!("[deskpet/macos] {}", format_args!($($arg)*));
     };
+}
+
+const LOGIN_AGENT_NAME: &str = "app.deskpet.plist";
+
+fn login_agent_path() -> Result<std::path::PathBuf> {
+    let home = std::env::var_os("HOME").context("HOME is unavailable")?;
+    Ok(std::path::PathBuf::from(home)
+        .join("Library")
+        .join("LaunchAgents")
+        .join(LOGIN_AGENT_NAME))
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+pub fn is_start_at_login_enabled() -> Result<bool> {
+    Ok(login_agent_path()?.is_file())
+}
+
+pub fn set_start_at_login(enabled: bool) -> Result<()> {
+    let path = login_agent_path()?;
+    if !enabled {
+        if path.exists() {
+            std::fs::remove_file(&path).context("removing DeskPet login agent")?;
+        }
+        return Ok(());
+    }
+
+    let executable = std::env::current_exe().context("locating DeskPet executable")?;
+    let executable = xml_escape(&executable.to_string_lossy());
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>app.deskpet</string>
+  <key>ProgramArguments</key>
+  <array><string>{executable}</string></array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+"#
+    );
+    let dir = path.parent().context("login agent path has no parent")?;
+    std::fs::create_dir_all(dir).context("creating LaunchAgents directory")?;
+    std::fs::write(&path, plist).context("writing DeskPet login agent")?;
+    Ok(())
 }
 
 /// Replace the Dock icon with a full-resolution image.
@@ -71,8 +124,7 @@ pub fn set_dock_icon(png: &[u8]) -> Result<()> {
         let image: *mut AnyObject = msg_send![image, initWithData: &*data];
         anyhow::ensure!(!image.is_null(), "the icon PNG could not be decoded");
 
-        let app_cls =
-            AnyClass::get(c"NSApplication").context("NSApplication not registered")?;
+        let app_cls = AnyClass::get(c"NSApplication").context("NSApplication not registered")?;
         let ns_app: *mut AnyObject = msg_send![app_cls, sharedApplication];
         let _: () = msg_send![ns_app, setApplicationIconImage: &*image];
     }
@@ -142,7 +194,7 @@ impl MacPetWindow {
         anyhow::ensure!(!ptr.is_null(), "null NSWindow handle");
         // SAFETY: Tauri guarantees this pointer is a live NSWindow for the
         // lifetime of the WebviewWindow.
-        unsafe { Ok(Retained::retain(ptr.cast()).context("failed to retain NSWindow")?) }
+        unsafe { Retained::retain(ptr.cast()).context("failed to retain NSWindow") }
     }
 
     /// Run `f` against the `NSWindow` on the main thread.
@@ -227,9 +279,8 @@ impl super::PetWindow for MacPetWindow {
             self.become_panel(&win)?;
 
             step!("setStyleMask(borderless | nonactivatingPanel)");
-            let mask = NSWindowStyleMask(
-                NSWindowStyleMask::Borderless.0 | NS_NONACTIVATING_PANEL_MASK,
-            );
+            let mask =
+                NSWindowStyleMask(NSWindowStyleMask::Borderless.0 | NS_NONACTIVATING_PANEL_MASK);
             win.setStyleMask(mask);
 
             // 2. Panel behaviour. `becomesKeyOnlyIfNeeded` is the one that
@@ -254,7 +305,7 @@ impl super::PetWindow for MacPetWindow {
             // 4. Above normal windows, below the menu bar. See StackLevel docs
             //    for why we don't go higher.
             step!("setLevel");
-            win.setLevel(NSMainMenuWindowLevel as isize - 1);
+            win.setLevel(NSMainMenuWindowLevel - 1);
 
             step!("setOpaque / setHasShadow / setIgnoresMouseEvents");
             win.setOpaque(false);
@@ -286,7 +337,7 @@ impl super::PetWindow for MacPetWindow {
     fn set_stack_level(&self, level: super::StackLevel) -> Result<()> {
         let value = match level {
             super::StackLevel::Normal => 0isize,
-            super::StackLevel::Floating => NSMainMenuWindowLevel as isize - 1,
+            super::StackLevel::Floating => NSMainMenuWindowLevel - 1,
         };
         self.on_main(move |win| win.setLevel(value))
     }
@@ -368,7 +419,10 @@ impl super::PetWindow for MacPetWindow {
                 "none".to_string()
             } else {
                 let f: objc2_foundation::NSRect = msg_send![&*win_screen, frame];
-                format!("({},{} {}x{})", f.origin.x, f.origin.y, f.size.width, f.size.height)
+                format!(
+                    "({},{} {}x{})",
+                    f.origin.x, f.origin.y, f.size.width, f.size.height
+                )
             };
 
             format!(

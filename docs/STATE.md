@@ -36,11 +36,12 @@ Ordered. The first item gates everything else.
    following across Spaces. Minutes of work now that the app runs.
 2. **A real matte.** Everything else in the import pipeline works; the cutout
    is the placeholder `BorderFloodMatte`, which floods inward from the border
-   and only survives a plain background. Owner chose macOS Vision first
-   (`VNGenerateForegroundInstanceMaskRequest`, macOS 14+): no download, no
-   model licence to audit, good quality. BiRefNet via ONNX stays the portable
-   answer for Windows and older macOS. Both sit behind `core::import::Matte`,
-   which takes pixels and returns pixels.
+   and only survives a plain background. Backend and hosting are now settled in
+   `HANDOFF.md`: BiRefNet_lite ONNX (MIT, 224 MB, pinned by revision and
+   hash), run from a separate `crates/assetpipe` binary that the app spawns per
+   import. macOS Vision was considered and dropped: DeskPet is meant to be
+   published, and one backend everywhere beats a faster one on half the
+   machines.
 3. **Edge decontamination** — unpremultiply, colour decontamination, guided
       filter, ~1px feather. Matting alone leaves a halo of the original
       background and the cutout reads as pasted on.
@@ -56,13 +57,6 @@ Done in this pass: settings UI, anchor detection from alpha, breathing frames
 from a single still, pack writing, and hot-swapping the active pack.
 
 ## Open questions
-
-- **Where does the ONNX runtime live?** `HANDOFF.md` requires that the resident
-  process carry no ML dependency — models load during import and unload
-  immediately. The cleanest reading is a separate `assetpipe` binary the app
-  spawns for an import and then forgets, rather than linking `ort` into the app
-  and trusting it to release. `crates/assetpipe` is still an empty directory,
-  so this is undecided rather than decided-and-unbuilt.
 
 - **The frontend has no test runner.** The one-shot-state trap (a `poke` with
   no `next` handling and a quiescence check that parked the loop inside it)
@@ -100,6 +94,8 @@ rejected for a reason recorded in `HANDOFF.md`.
 ## Log
 
 Newest first. One line per session. Never edit another agent's entry.
+
+- **2026-10-02 `codex`** — Settings now reads the active pack on open, shows configured material directories for fixed slots, and labels their buttons “更改”; empty slots remain “上传”. Newly selected files show “待应用” until import succeeds, then settings reloads the installed pack. Original upload paths are not recorded in existing packs, so directories refer to the actual runtime sprites. Frontend build passed; installed macOS app has not been replaced.
 
 - **2026-09-07 `claude`** — First run on real macOS hardware. Four bugs, each
   invisible in the one before it:

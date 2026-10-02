@@ -97,6 +97,109 @@ hit some of them.
 Windows equivalents of (3) and (4) are already implemented via
 `SHQueryUserNotificationState`.
 
+## The matte model
+
+Locked 2026-09-07, after the owner confirmed DeskPet is meant to be published
+rather than kept personal. One backend on every platform, so the same photo
+produces the same cutout everywhere — two backends means "it looks different on
+my other machine", which is close to undiagnosable from a bug report.
+
+| | |
+|---|---|
+| Model | `onnx-community/BiRefNet_lite-ONNX`, `onnx/model.onnx` |
+| Revision | `de15b22ba131738a16dff04aab8bdf8dc32e3ac1` (pin it; `main` is mutable) |
+| SHA-256 | `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333` |
+| Size | 224 MB |
+| Licence | MIT |
+| Input | 1024x1024, bilinear, ImageNet mean/std, NCHW float32 |
+| Output | logits — apply sigmoid to get alpha |
+
+**fp32, not fp16.** The fp16 build is half the download (114 MB) and the
+obvious saving, but ONNX Runtime's CPU execution provider has no native fp16
+path and converts per operator, which is slower than fp32. fp16 only pays off
+behind CoreML or DirectML. Revisit when execution-provider selection exists;
+until then this trades correctness for bytes.
+
+Rejected: full BiRefNet (940 MB — an unacceptable first-run download for a
+desktop toy), RMBG-1.4 and 2.0 (CC BY-NC).
+
+## Where the model runs
+
+**A separate binary, `crates/assetpipe`, spawned for one import and then
+gone.** Not linked into the app.
+
+This is the resource budget being taken literally: the resident process must
+carry no ML dependency, and "we load the model and then drop it" is a promise
+about an allocator's behaviour that nobody can verify from the outside. A
+process that exits releases everything, provably. It also keeps a crash in a
+560 MB inference run from taking the pet down with it, and keeps `ort` out of
+the app's dependency tree entirely.
+
+The cost is a process boundary: images and masks cross it as files, and the app
+has to handle the binary being missing.
+
+## Generated actions
+
+Locked 2026-09-07. The owner's goal is a pet that does things the photo does
+not contain — sticks its tongue out, rolls over, scratches. No amount of
+deforming a cutout produces geometry that is not in the picture, so those come
+from an image-to-video model at import time.
+
+**The pack format already fits this.** A `states` entry is a name and a list of
+frames; a generated clip, matted and aligned, is exactly that. Generated
+actions are ordinary pack states — no new format, no special runtime path.
+
+Shape of it:
+
+1. The cutout is sent as the **first frame**, with a prompt per action. Seeding
+   from the cutout is what keeps the animal recognisably the same one; a clip
+   generated from the prompt alone drifts into a different dog.
+2. Each returned clip is matted frame by frame through the existing pipeline
+   and aligned on the anchor, so a generated state sits on the floor the same
+   way a drawn one does.
+3. The 2.5D runtime layer stays. Between actions the pet still breathes, tilts
+   and tracks the cursor — otherwise it is a video player that shows a still
+   image most of the time.
+
+### Revised 2026-09-07: the app is not the generator
+
+The owner has to be able to publish this, and generating per user means either
+a bill per import or a multi-gigabyte model in the download. Neither survives
+distribution, so **DeskPet accepts assets rather than producing them**.
+
+Users bring photos and short clips; the pipeline mattes, aligns and packs them.
+A clip made with a paid tool and a clip shot on a phone are the same input.
+This costs us nothing per user, has no privacy story to explain, and puts no
+ceiling on quality — someone willing to spend on generation gets a
+correspondingly better pet, and everyone else gets a good one for free.
+
+In-app generation stays possible as an opt-in with the user's own API key. It
+is a convenience, not the product. Requirements for what can be imported are in
+`docs/IMPORTING.md`.
+
+**Provider (only for the opt-in path): fal.ai**, behind a `VideoProvider` interface. One account reaches
+several models, it is pay-per-request rather than a subscription, and swapping
+model is a string. The interface exists so Replicate or a direct vendor API can
+be added without touching the pipeline.
+
+**Bring your own key.** Stored in the app's config TOML. That is a plaintext
+secret in the user's config directory — acceptable for a key the user created
+and can revoke, and the alternative (us holding keys and billing) is a business
+decision, not a technical one.
+
+**Photos leave the machine on this path.** The owner accepted that for
+generation specifically, on condition that the user is told plainly before it
+happens. Matting stays local; only generation uploads.
+
+### Decoding the clips
+
+Providers return mp4. Decoding H.264 in Rust means either linking ffmpeg
+(LGPL, tens of megabytes, a packaging problem on both platforms) or a patent-
+encumbered decoder binding. Neither is worth it, because **the webview already
+has a decoder**: the settings window loads the clip in a `<video>` element,
+seeks frame by frame onto a canvas, and hands the frames back. WKWebView and
+WebView2 both decode H.264, so this costs nothing and works on both platforms.
+
 ## Licensing landmines
 
 Check before adding any model or asset:

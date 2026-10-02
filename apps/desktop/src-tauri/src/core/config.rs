@@ -19,6 +19,13 @@ pub struct Config {
     pub scale: f32,
     /// Frames per second when the pet window is not focused.
     pub unfocused_fps: u8,
+    /// Seconds without interaction before the pet enters its sleep state.
+    pub sleep_after_seconds: u32,
+    /// Launch DeskPet automatically after the user signs in. Off by default.
+    pub start_at_login: bool,
+    /// Last user-chosen window origin in physical screen pixels.
+    pub window_x: Option<i32>,
+    pub window_y: Option<i32>,
 }
 
 impl Default for Config {
@@ -32,6 +39,10 @@ impl Default for Config {
             quiet_while_typing: true,
             scale: 1.0,
             unfocused_fps: 10,
+            sleep_after_seconds: 90,
+            start_at_login: false,
+            window_x: None,
+            window_y: None,
         }
     }
 }

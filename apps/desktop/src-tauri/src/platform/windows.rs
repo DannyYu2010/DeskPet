@@ -12,19 +12,58 @@
 //!   WS_EX_TRANSPARENT - toggled by the hitmask loop for click-through
 
 use anyhow::{Context, Result};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
-use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE};
+use windows::Win32::UI::Shell::{
+    SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, IsWindowVisible, SetWindowLongPtrW,
-    SetWindowPos,
-    GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+    SetWindowPos, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
 };
+
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const RUN_VALUE: &str = "DeskPet";
+
+pub fn is_start_at_login_enabled() -> Result<bool> {
+    let status = Command::new("reg")
+        .args(["query", RUN_KEY, "/v", RUN_VALUE])
+        .status()
+        .context("querying Windows login startup")?;
+    Ok(status.success())
+}
+
+pub fn set_start_at_login(enabled: bool) -> Result<()> {
+    let status = if enabled {
+        let executable = std::env::current_exe().context("locating DeskPet executable")?;
+        let command = format!("\"{}\"", executable.display());
+        Command::new("reg")
+            .args(["add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d"])
+            .arg(command)
+            .arg("/f")
+            .status()
+            .context("adding Windows login startup")?
+    } else {
+        let status = Command::new("reg")
+            .args(["delete", RUN_KEY, "/v", RUN_VALUE, "/f"])
+            .status()
+            .context("removing Windows login startup")?;
+        // `reg delete` returns 1 when the value is already absent. Off is
+        // idempotent, so an absent value is already the requested state.
+        if !status.success() && !is_start_at_login_enabled()? {
+            return Ok(());
+        }
+        status
+    };
+    anyhow::ensure!(status.success(), "Windows registry command failed");
+    Ok(())
+}
 
 pub struct WinPetWindow {
     window: tauri::WebviewWindow,
@@ -50,15 +89,12 @@ impl super::PetWindow for WinPetWindow {
         let hwnd = self.hwnd()?;
         unsafe {
             let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-            let next = current
-                | WS_EX_LAYERED.0
-                | WS_EX_TOOLWINDOW.0
-                | WS_EX_NOACTIVATE.0;
+            let next = current | WS_EX_LAYERED.0 | WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0;
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next as isize);
 
             SetWindowPos(
                 hwnd,
-                Some(HWND_TOPMOST),
+                HWND_TOPMOST,
                 0,
                 0,
                 0,
@@ -95,7 +131,7 @@ impl super::PetWindow for WinPetWindow {
         unsafe {
             SetWindowPos(
                 hwnd,
-                Some(insert_after),
+                insert_after,
                 0,
                 0,
                 0,
@@ -138,7 +174,11 @@ impl super::PetWindow for WinPetWindow {
     }
 
     fn is_dnd_active(&self) -> bool {
-        unsafe { SHQueryUserNotificationState().map(|s| s == QUNS_BUSY).unwrap_or(false) }
+        unsafe {
+            SHQueryUserNotificationState()
+                .map(|s| s == QUNS_BUSY)
+                .unwrap_or(false)
+        }
     }
 
     fn mouse_button_down(&self) -> bool {

@@ -49,8 +49,21 @@ requirement.
     },
     "walk":   { "frames": ["walk_00.webp", "walk_01.webp"], "fps": 12, "loop": true },
     "sleep":  { "frames": ["sleep_00.webp"], "fps": 1, "loop": true },
+    "lie_down": { "frames": ["lie_00.webp", "lie_01.webp"], "fps": 12, "loop": false, "next": "sleep" },
+    "wake":   { "frames": ["wake_00.webp", "wake_01.webp"], "fps": 12, "loop": false, "next": "idle" },
     "notify": { "frames": ["notify_00.webp"], "fps": 6, "loop": false, "next": "idle" },
-    "poke":   { "frames": ["poke_00.webp"], "fps": 10, "loop": false, "next": "idle" }
+    "poke":   { "frames": ["poke_00.webp"], "fps": 10, "loop": false, "next": "idle" },
+    "run":    { "frames": ["run_00.webp", "run_01.webp"], "fps": 12, "loop": false, "next": "idle" }
+  },
+
+  "interactions": {
+    "singleClick": "poke",
+    "doubleClick": "run"
+  },
+
+  "actionLabels": {
+    "poke": "抬头回应",
+    "run": "奔跑"
   },
 
   "transitions": {
@@ -89,6 +102,20 @@ Only `idle` is required. Any state referenced by `transitions` or `sourceMap`
 must exist. A pack with a single static PNG under `idle` is valid — the runtime
 adds procedural breathing and blinking on top, which is enough to stop it
 reading as a sticker.
+
+`sleep` is the long-inactivity loop. When present, `lie_down` is the optional
+one-shot transition from `idle` to `sleep`, and `wake` is the optional one-shot
+transition back to `idle`.
+
+### Interactions
+
+`interactions` optionally binds `singleClick` and `doubleClick` to any declared
+state. Custom actions should be non-looping and set `next: "idle"` so the pet
+returns to daily companionship after the action. `actionLabels` stores the
+user-facing names for those states. Older packs may omit both fields.
+
+When a double-click action exists, DeskPet waits 250 ms before firing the
+single-click action so a double click does not play both actions.
 
 ### Anchor
 

@@ -1,0 +1,10 @@
+active_pack = "default"
+webhook_port = 7423
+webhook_token = ""
+respect_dnd = true
+hide_on_fullscreen = true
+quiet_while_typing = true
+scale = 1.0
+unfocused_fps = 10
+sleep_after_seconds = 90
+start_at_login = false

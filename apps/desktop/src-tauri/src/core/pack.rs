@@ -104,6 +104,10 @@ pub struct Manifest {
     #[serde(default)]
     pub transitions: HashMap<String, Vec<Transition>>,
     #[serde(default)]
+    pub interactions: HashMap<String, String>,
+    #[serde(default)]
+    pub action_labels: HashMap<String, String>,
+    #[serde(default)]
     pub gaze: Option<Gaze>,
     #[serde(default)]
     pub shadow: Option<Shadow>,
@@ -295,7 +299,10 @@ fn validate(m: &Manifest) -> Result<()> {
         }
         for t in list {
             if !m.states.contains_key(&t.to) {
-                bail!("transition '{from}' -> '{}' targets a state that does not exist", t.to);
+                bail!(
+                    "transition '{from}' -> '{}' targets a state that does not exist",
+                    t.to
+                );
             }
         }
     }
@@ -303,6 +310,21 @@ fn validate(m: &Manifest) -> Result<()> {
     for (source, state) in &m.source_map {
         if !m.states.contains_key(state) {
             bail!("sourceMap '{source}' -> '{state}' targets a state that does not exist");
+        }
+    }
+
+    for (gesture, state) in &m.interactions {
+        if gesture != "singleClick" && gesture != "doubleClick" {
+            bail!("interaction '{gesture}' is not supported");
+        }
+        if !m.states.contains_key(state) {
+            bail!("interaction '{gesture}' targets '{state}', which does not exist");
+        }
+    }
+
+    for state in m.action_labels.keys() {
+        if !m.states.contains_key(state) {
+            bail!("action label targets '{state}', which does not exist");
         }
     }
 
@@ -331,12 +353,45 @@ fn data_url(frame_id: &str, bytes: &[u8]) -> Result<String> {
     {
         Some("webp") => "image/webp",
         Some("png") => "image/png",
-        other => bail!(
-            "frame '{frame_id}' has extension {other:?}; packs use WebP or PNG"
-        ),
+        other => bail!("frame '{frame_id}' has extension {other:?}; packs use WebP or PNG"),
     };
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::*;
+
+    fn manifest(extra: &str) -> Manifest {
+        let source = format!(
+            r#"{{
+              "format": 0,
+              "id": "test.pet",
+              "name": "Test",
+              "author": "Test",
+              "license": "Test",
+              "canvas": {{ "width": 256, "height": 256 }},
+              "anchor": {{ "baselineY": 240, "centroidX": 128 }},
+              "states": {{ "idle": {{ "frames": ["idle.webp"], "fps": 1, "loop": true }} }}
+              {extra}
+            }}"#
+        );
+        serde_json::from_str(&source).unwrap()
+    }
+
+    #[test]
+    fn old_manifest_without_interactions_is_valid() {
+        validate(&manifest("")).unwrap();
+    }
+
+    #[test]
+    fn interaction_must_target_an_existing_state() {
+        let err = validate(&manifest(r#", "interactions": { "singleClick": "run" }"#))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not exist"));
+    }
 }

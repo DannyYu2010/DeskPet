@@ -50,6 +50,7 @@ pub trait PetWindow: Send + Sync {
 
     /// True when the OS "do not disturb" / "focus" mode is on.
     /// The pet stays visible but suppresses all notification reactions.
+    #[allow(dead_code)]
     fn is_dnd_active(&self) -> bool;
 
     /// True while any mouse button is physically held down, anywhere on the
@@ -80,7 +81,7 @@ pub trait PetWindow: Send + Sync {
 pub fn set_app_icon(png: &[u8]) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        return macos::set_dock_icon(png);
+        macos::set_dock_icon(png)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -96,7 +97,7 @@ pub fn set_app_icon(png: &[u8]) -> Result<()> {
 pub fn hide_from_dock() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        return macos::use_accessory_policy();
+        macos::use_accessory_policy()
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -110,10 +111,43 @@ pub fn hide_from_dock() -> Result<()> {
 pub fn activate_app() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        return macos::activate();
+        macos::activate()
     }
     #[cfg(not(target_os = "macos"))]
     {
+        Ok(())
+    }
+}
+
+/// Read the operating system's actual login-startup registration.
+pub fn is_start_at_login_enabled() -> Result<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_start_at_login_enabled()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::is_start_at_login_enabled()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
+/// Add or remove DeskPet from the current user's login startup list.
+pub fn set_start_at_login(enabled: bool) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_start_at_login(enabled)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::set_start_at_login(enabled)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = enabled;
         Ok(())
     }
 }

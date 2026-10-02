@@ -12,28 +12,41 @@
 import type { Manifest, StateName, Transition } from "../petpack";
 
 export interface BrainEvent {
-  kind: "poke" | "drag_start" | "drag_end" | "notify" | "cursor_near";
+  kind: "poke" | "drag_start" | "drag_end" | "notify" | "cursor_near" | "action";
+  state?: StateName;
 }
 
 export interface BrainOutput {
   state: StateName;
+  /** Seconds since this state was entered; one-shot animations start at frame 0. */
+  stateElapsedSeconds: number;
   /** 0-1, exposed so the renderer can slow blinks and droop posture. */
   boredom: number;
   /** True when nothing is animating and the render loop can be parked. */
   quiescent: boolean;
 }
 
-const BOREDOM_PER_SECOND = 1 / 90; // saturates after ~90s of no interaction
 const MIN_STATE_SECONDS = 1.2; // stops visible flip-flopping
 
 export class Brain {
   private boredom = 0;
-  private state: StateName = "idle";
+  private state: StateName;
   private timeInState = 0;
   private forcedUntil = 0;
   private now = 0;
+  private sleepAfterSeconds: number;
+  private wakeAfterLieDown = false;
 
-  constructor(private manifest: Manifest) {}
+  constructor(private manifest: Manifest, sleepAfterSeconds = 90) {
+    this.sleepAfterSeconds = Math.max(1, sleepAfterSeconds);
+    // Packs may provide a one-shot appearance animation. Older packs start
+    // exactly as before because `idle` remains the compatibility fallback.
+    this.state = manifest.states.launch ? "launch" : "idle";
+  }
+
+  setSleepAfterSeconds(seconds: number): void {
+    this.sleepAfterSeconds = Math.max(1, seconds);
+  }
 
   handle(event: BrainEvent): void {
     // Any interaction resets the drive. This is what makes the pet perk up
@@ -42,7 +55,18 @@ export class Brain {
 
     switch (event.kind) {
       case "poke":
-        this.enter("poke", 0.8);
+        // A sleeping pet should first get up; jumping straight from the lying
+        // silhouette into a standing poke reads as a broken frame.
+        if (this.state === "sleep" && this.manifest.states.wake) {
+          this.enter("wake", 0);
+        } else if (this.state === "lie_down") {
+          this.wakeAfterLieDown = true;
+        } else {
+          this.enter("poke", 0.8);
+        }
+        break;
+      case "action":
+        if (event.state) this.enter(event.state, 0);
         break;
       case "drag_start":
         this.enter("drag", 0);
@@ -54,8 +78,16 @@ export class Brain {
         this.enter("notify", 1.5);
         break;
       case "cursor_near":
-        // Deliberately does not change state — only resets boredom. Having the
-        // pet lunge at the cursor every time it passes is exhausting.
+        // Sleeping is the one state where approach has intent: wake at once.
+        // A dedicated one-shot `wake` animation may bridge into idle; packs
+        // without it still respond immediately instead of ignoring the user.
+        if (this.state === "sleep") {
+          this.enter(this.manifest.states.wake ? "wake" : "idle", 0);
+        } else if (this.state === "lie_down") {
+          // Finish the physically coherent descent first, then immediately
+          // play the matching wake transition from its exact sleep endpoint.
+          this.wakeAfterLieDown = true;
+        }
         break;
     }
   }
@@ -63,7 +95,7 @@ export class Brain {
   tick(dt: number): BrainOutput {
     this.now += dt;
     this.timeInState += dt;
-    this.boredom = Math.min(1, this.boredom + dt * BOREDOM_PER_SECOND);
+    this.boredom = Math.min(1, this.boredom + dt / this.sleepAfterSeconds);
 
     const locked = this.now < this.forcedUntil;
 
@@ -75,17 +107,28 @@ export class Brain {
     if (!locked && def && def.loop === false && def.next) {
       const playedFor = def.frames.length / def.fps;
       if (this.timeInState >= playedFor) {
+        const completed = this.state;
         this.enter(def.next, 0);
+        if (completed === "lie_down" && this.wakeAfterLieDown && this.state === "sleep") {
+          this.wakeAfterLieDown = false;
+          this.enter(this.manifest.states.wake ? "wake" : "idle", 0);
+        }
       }
     }
 
-    if (!locked && this.timeInState >= MIN_STATE_SECONDS) {
+    // Sleeping is a timer promise to the user, so it must not depend on the
+    // random transition sampler. Once inactivity reaches the configured
+    // duration, enter sleep on the next tick.
+    if (!locked && this.state === "idle" && this.boredom >= 1 && this.manifest.states.sleep) {
+      this.enter(this.manifest.states.lie_down ? "lie_down" : "sleep", 0);
+    } else if (!locked && this.timeInState >= MIN_STATE_SECONDS) {
       const next = this.pick(this.state);
       if (next && next !== this.state) this.enter(next, 0);
     }
 
     return {
       state: this.state,
+      stateElapsedSeconds: this.timeInState,
       boredom: this.boredom,
       quiescent: this.isQuiescent(),
     };

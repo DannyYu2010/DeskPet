@@ -49,8 +49,10 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            bundles: app
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            bundles: nsis
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +93,15 @@ jobs:
         run: cargo test --all
         working-directory: apps/desktop/src-tauri
 
+      - name: Build Windows asset-pipeline sidecar
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p deskpet-assetpipe
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/binaries | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/deskpet-assetpipe.exe" `
+            "apps/desktop/src-tauri/binaries/deskpet-assetpipe-${{ matrix.target }}.exe"
+
       - name: Build bundle
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
         working-directory: apps/desktop

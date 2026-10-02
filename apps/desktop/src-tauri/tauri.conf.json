@@ -36,6 +36,9 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "DeskPet",
+    "shortDescription": "A lifelike pet that lives on your Windows desktop.",
+    "longDescription": "DeskPet brings a lifelike pet to your desktop with transparent animation, interaction, sleep and wake behaviour, and user-imported pet packs.",
     "targets": [
       "dmg",
       "app",
@@ -52,12 +55,27 @@
       "minimumSystemVersion": "12.0"
     },
     "windows": {
+      "allowDowngrades": false,
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "compression": "lzma",
+        "startMenuFolder": "DeskPet",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "windows/nsis-hooks.nsh"
       }
     },
     "resources": {
-      "../../../packs": "packs"
+      "../../../packs/default": "packs/default",
+      "windows/default-config.toml": "windows/default-config.toml"
     }
   }
 }
